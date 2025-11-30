@@ -1,0 +1,89 @@
+#include "ASGraph.hpp"
+#include "Announcement.hpp"
+#include "BGP.hpp"
+
+#include <fstream>
+#include <algorithm>
+#include <tuple>
+#include <cstdio>
+
+// ======================================================
+//  FINAL, HEADER-CORRECT RIB CSV OUTPUT (CONST SAFE)
+// ======================================================
+
+void ASGraph::write_ribs_csv(const std::string &output_file) const {
+    std::vector<std::tuple<int, std::string, std::string>> rows;
+
+    //  Iterate using correct container: nodes
+    for (const auto &pair : nodes) {
+        int asn = pair.first;
+        const auto &as = pair.second;
+
+        if (!as || !as->policy)
+            continue;
+
+        const auto &rib = as->policy->local_rib;
+
+        for (const auto &rib_pair : rib) {
+            const std::string &prefix = rib_pair.first;
+            const Announcement &ann = rib_pair.second;
+
+            // ✅ Format AS path exactly like expected output
+            std::string path_str = "(";
+            for (size_t i = 0; i < ann.as_path.size(); i++) {
+                path_str += std::to_string(ann.as_path[i]);
+                if (i + 1 < ann.as_path.size())
+                    path_str += ", ";
+            }
+            path_str += ")";
+
+            rows.emplace_back(asn, prefix, path_str);
+        }
+    }
+
+    // ======================================================
+    // ✅ CRITICAL FIX: NUMERIC IP SORT (NOT STRING SORT)
+    // ======================================================
+
+    auto ip_to_int = [](const std::string &prefix) {
+        int a, b, c, d, mask;
+        sscanf(prefix.c_str(), "%d.%d.%d.%d/%d", &a, &b, &c, &d, &mask);
+        return (a << 24) | (b << 16) | (c << 8) | d;
+    };
+
+    std::sort(rows.begin(), rows.end(),
+        [&](const auto &x, const auto &y) {
+            int asn_x = std::get<0>(x);
+            int asn_y = std::get<0>(y);
+            if (asn_x != asn_y)
+                return asn_x < asn_y;
+
+            const std::string &px = std::get<1>(x);
+            const std::string &py = std::get<1>(y);
+
+            int ip_x = ip_to_int(px);
+            int ip_y = ip_to_int(py);
+
+            if (ip_x != ip_y)
+                return ip_x < ip_y;
+
+            return px < py;  // tie-break on mask if needed
+        }
+    );
+
+    // ======================================================
+    // ✅ WRITE CSV WITH WINDOWS LINE ENDINGS (REQUIRED)
+    // ======================================================
+
+    std::ofstream out(output_file);
+    out << "asn,prefix,as_path\r\n";
+
+    for (const auto &row : rows) {
+        out << std::get<0>(row) << ","
+            << std::get<1>(row) << ",\""
+            << std::get<2>(row) << "\"\r\n";
+    }
+
+    out.close();
+}
+
