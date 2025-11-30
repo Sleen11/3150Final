@@ -292,7 +292,8 @@ void ASGraph::write_ribs_csv(const std::string &output_file) const {
     // Sort by asn, then prefix lexicographically.
     std::sort(rows.begin(), rows.end(),
               [](const auto &a, const auto &b) {
-                  if (std::get<0>(a) != std::get<0>(b))
+                  if (std::get<0>(a) != s
+d::get<0>(b))
                       return std::get<0>(a) < std::get<0>(b);
                   return std::get<1>(a) < std::get<1>(b);
               });
